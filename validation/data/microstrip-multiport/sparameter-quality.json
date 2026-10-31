@@ -1,0 +1,10 @@
+{
+  "complete": true,
+  "reference_impedance_ohms": 50.0,
+  "max_singular_value": 0.9973706440494783,
+  "worst_singular_frequency_index": 0,
+  "max_single_excitation_power": 0.9472483653341364,
+  "max_reciprocity_error": 0.0011165119764230914,
+  "max_wave_matrix_condition": 1.6423009253335044,
+  "normalization": "B = S A, all port incident waves retained"
+}

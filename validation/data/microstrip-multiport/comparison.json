@@ -1,0 +1,18 @@
+{
+  "points": 401,
+  "start_hz": 1000000000.0,
+  "stop_hz": 6000000000.0,
+  "old_ratio": {
+    "max_singular_value": 1.2145857469729648,
+    "worst_singular_frequency_index": 400,
+    "max_single_excitation_power": 0.9955780844574939,
+    "max_reciprocity_error": 0.001140300638363306
+  },
+  "complete_wave_matrix": {
+    "max_singular_value": 0.9973706440494781,
+    "worst_singular_frequency_index": 0,
+    "max_single_excitation_power": 0.9472483653341364,
+    "max_reciprocity_error": 0.0011165119764230914
+  },
+  "max_condition": 1.6423009253335044
+}

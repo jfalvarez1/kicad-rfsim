@@ -41,6 +41,7 @@ def _show_warning(message, category, filename, lineno, file=None, line=None):
 warnings.showwarning = _show_warning
 
 import solverenv  # the directory of this file is sys.path[0] for a script
+from wave_matrix import scattering_from_waves, quality_metrics
 
 # On Windows, the python extensions of openEMS and CSXCAD must have the
 # DLLs from the binary directory of openEMS. (openEMS v0.37 and after also
@@ -2497,6 +2498,9 @@ write_touchstone = solverenv.write_touchstone
 
 
 def main(model_path, outdir):
+    # openEMS changes its working directory while running. Keep subsequent
+    # probe reads anchored to the caller's requested output directory.
+    outdir = os.path.abspath(outdir)
     with open(model_path) as fh:
         model = json.load(fh)
     # A model that is NEWER than this runner can have a key that gives a
@@ -2602,6 +2606,8 @@ def main(model_path, outdir):
 
     freq = np.linspace(s["f_start"], s["f_stop"], s.get("n_freq", 401))
     S = np.zeros((len(freq), n, n), dtype=complex)
+    incident = np.zeros_like(S)
+    reflected = np.zeros_like(S)
     # Excite only the ports that the user selected. Each port is a full
     # FDTD run. The S-columns of the other ports stay zero. A default
     # model, or a previous model, excites all the ports.
@@ -2725,6 +2731,8 @@ def main(model_path, outdir):
         for p in ports:
             p.CalcPort(sim_path, freq, ref_impedance=s["z0"])
         for j in range(n):
+            incident[:, j, k] = ports[j].uf_inc
+            reflected[:, j, k] = ports[j].uf_ref
             S[:, j, k] = ports[j].uf_ref / ports[k].uf_inc
         if ff is not None:
             try:
@@ -2748,6 +2756,38 @@ def main(model_path, outdir):
             except Exception as e:
                 print("[rfsim] WARNING: the current views of port %d are "
                       "not available: %s" % (k + 1, e), flush=True)
+
+    # The usual b_j/a_k ratio assumes every other incident wave is zero.
+    # That is not generally true after CalcPort renormalizes MSL ports to
+    # the requested real reference impedance. Recover the full network
+    # from all experiments: B = S A.
+    complete = len(exc) == n
+    quality = {'complete': complete, 'reference_impedance_ohms': s['z0']}
+    if complete:
+        try:
+            S, condition = scattering_from_waves(incident, reflected)
+        except ValueError as e:
+            raise SystemExit('[rfsim] ERROR: cannot normalize port waves: %s' % e)
+        quality.update(quality_metrics(S))
+        quality['max_wave_matrix_condition'] = float(condition.max())
+        quality['normalization'] = 'B = S A, all port incident waves retained'
+        print('[rfsim] full-matrix passivity: max singular value %.6f (passive limit 1)'
+              % quality['max_singular_value'], flush=True)
+        if quality['max_singular_value'] > 1.01:
+            print('[rfsim] WARNING: full S-matrix violates passivity by more than 1%%; '
+                  'do not treat this as a validated passive network.', flush=True)
+    else:
+        quality['normalization'] = 'partial excitation ratios; not a complete S-matrix'
+        print('[rfsim] WARNING: partial excitation ratios cannot determine the full '
+              'S-matrix when other ports have incident waves. Excite all ports for '
+              'network extraction and passivity checking.', flush=True)
+    np.savez_compressed(os.path.join(outdir, 'port_waves.npz'), frequency_hz=freq,
+                        incident=incident, reflected=reflected, excited_indices=exc)
+    with open(os.path.join(outdir, 'sparameter-quality.json'), 'w', encoding='utf-8') as fh:
+        json.dump(quality, fh, indent=2)
+    if not complete:
+        raise SystemExit('[rfsim] ERROR: saved partial port waves, but no Touchstone '
+                         'network. Select all excitation ports for a complete S-matrix.')
 
     if lines:
         with open(os.path.join(outdir, "lines.json"), "w") as fh:
